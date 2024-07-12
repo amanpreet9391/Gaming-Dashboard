@@ -8,7 +8,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
 
-//Table storing the player name, user id and score.
+//Table storing the player userId, name and score.
 @Entity
 @Table(name = ConfigurationConstants.PLAYER_SCORE_TABLE_NAME)
 public class Player implements Comparable<Player>{
