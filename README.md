@@ -5,6 +5,7 @@ Implementation of a module(sub-part of a gaming service) that keeps track of the
 - [API Spec](#api-spec)
 - [High Level System Design](#high-level-system-design)
 - [Working Code Snippets](#working-code-snippets)
+- [Improvements](#improvements)
 
 ### Functional Requirements
  
