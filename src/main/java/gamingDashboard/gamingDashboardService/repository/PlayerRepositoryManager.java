@@ -39,4 +39,5 @@ public class PlayerRepositoryManager {
         return scoreRepository.findAll().stream().sorted().limit(ConfigurationConstants.TOP_N_SCORERS).collect(Collectors.toList());
     }
 
+
 }

@@ -9,16 +9,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
-import java.util.NoSuchElementException;
-
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-
 
 @ExtendWith(MockitoExtension.class)
 public class GameServiceTest {
+
+    @InjectMocks
+    private GameServiceImpl gameServiceImpl;
 
     @Mock
     private GameUtil gameUtil;
@@ -32,58 +37,93 @@ public class GameServiceTest {
     @Mock
     private KafkaProducerService kafkaProducerService;
 
-    @InjectMocks
-    private GameServiceImpl gameService;
-
-    private String userId;
-    private int score;
-    private Player player;
-    private String name;
-
     @BeforeEach
     public void setUp() {
-        userId = "test_user";
-        score = 48;
-        name = "test_name";
-        player = new Player(userId, score,name);
+        MockitoAnnotations.initMocks(this);
     }
 
     @Test
-    public void testPlayGameForNewPlayer(){
-        when(playerRepositoryManager.isPlayerPresent(userId)).thenReturn(false);
-        when(gameUtil.getScore(userId)).thenReturn(score);
+    public void testPlayGameIfUserExists() {
+        String userId = "user123";
+        Player player = new Player();
+        player.setUserId(userId);
 
-        String response = gameService.playGame(player);
-
-        assertNotNull(response);
-        assertTrue(response.contains(String.valueOf(score)));
-        verify(playerRepositoryManager, times(1)).savePlayer(any(Player.class));
-        verify(kafkaProducerService, times(1)).sendMessage(any(Player.class));
-    }
-
-    @Test
-    public void testPlayGameForExistingPlayer(){
         when(playerRepositoryManager.isPlayerPresent(userId)).thenReturn(true);
-        when(gameUtil.getScore(userId)).thenReturn(score);
         when(playerRepositoryManager.getPlayerById(userId)).thenReturn(player);
+        when(gameUtil.getScore(userId)).thenReturn(100);
 
-        String response = gameService.playGame(player);
-        assertNotNull(response);
-        assertTrue(response.contains(String.valueOf(score)));
-        verify(playerRepositoryManager, times(1)).savePlayer(any(Player.class));
-        verify(kafkaProducerService, times(1)).sendMessage(any(Player.class));
+        ResponseEntity<String> response = gameServiceImpl.playGame(userId);
 
+        verify(playerRepositoryManager, times(1)).isPlayerPresent(userId);
+        verify(playerRepositoryManager, times(1)).getPlayerById(userId);
+        verify(gameUtil, times(1)).getScore(userId);
+        verify(playerRepositoryManager, times(1)).savePlayer(player);
+        verify(kafkaProducerService, times(1)).sendMessage(player);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("100", response.getBody());
     }
 
     @Test
-    public void testPlayGameForExceptionInGetScore(){
-        when(gameUtil.getScore(userId)).thenThrow(new RuntimeException("Game execution failed"));
-        RuntimeException exception = assertThrows(RuntimeException.class,() -> {
-            gameService.playGame(player);
-        });
+    public void testPlayGameIfUserDoesNotExists() {
+        String userId = "user123";
 
-        assertEquals("Game execution failed",exception.getMessage());
+        when(playerRepositoryManager.isPlayerPresent(userId)).thenReturn(false);
+
+        ResponseEntity<String> response = gameServiceImpl.playGame(userId);
+
+        verify(playerRepositoryManager, times(1)).isPlayerPresent(userId);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("UserId doesn't exist", response.getBody());
     }
 
+    @Test
+    public void testPlayGameInternalServerError() {
+        String userId = "user123";
 
+        when(playerRepositoryManager.isPlayerPresent(userId)).thenThrow(new RuntimeException("Database error"));
+
+        ResponseEntity<String> response = gameServiceImpl.playGame(userId);
+
+        verify(playerRepositoryManager, times(1)).isPlayerPresent(userId);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Game execution failed: Database error", response.getBody());
+    }
+
+    @Test
+    public void testCreatePlayerSuccess() {
+        Player player = new Player();
+        player.setUserId("user123");
+
+        ResponseEntity<String> response = gameServiceImpl.createPlayer(player);
+
+        verify(playerRepositoryManager, times(1)).savePlayer(player);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("user123", response.getBody());
+    }
+
+    @Test
+    public void testCreatePlayerEmptyUserId() {
+        Player player = new Player();
+        player.setUserId("");
+
+        ResponseEntity<String> response = gameServiceImpl.createPlayer(player);
+
+        verify(playerRepositoryManager, never()).savePlayer(any(Player.class));
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Player creation failed: Please provide a valid user Id", response.getBody());
+    }
+
+    @Test
+    public void testCreatePlayerInternalError() {
+        Player player = new Player();
+        player.setUserId("user123");
+
+        doThrow(new RuntimeException("Database error")).when(playerRepositoryManager).savePlayer(player);
+
+        ResponseEntity<String> response = gameServiceImpl.createPlayer(player);
+
+        verify(playerRepositoryManager, times(1)).savePlayer(player);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Player creation failed: Database error", response.getBody());
+    }
 }

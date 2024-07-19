@@ -15,7 +15,6 @@ public class KafkaConsumerService {
     @KafkaListener(topics = "player-score", groupId = "gameScoreGroupId")
     public void consume(Player message) {
         maxHeap.offer(message);
-        System.out.println("Updated Max Heap: " + maxHeap);
     }
 
     public PriorityQueue<Player> getMaxHeap() {
